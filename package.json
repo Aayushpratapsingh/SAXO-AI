@@ -1,0 +1,50 @@
+{
+  "name": "saxo-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local-first desktop browser agent with approval before every action.",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "tsc -p tsconfig.main.json && concurrently -k \"vite --config apps/desktop/vite.config.ts\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
+    "test": "tsc -p tsconfig.main.json && node --test tests/*.test.cjs",
+    "build": "tsc --noEmit && tsc -p tsconfig.main.json && vite build --config apps/desktop/vite.config.ts && electron-builder --dir",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "playwright": "^1.49.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "ai.saxo.desktop",
+    "productName": "SAXO AI",
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "SAXO uses Google Chrome to carry out browser actions only after you approve each action."
+      }
+    },
+    "files": [
+      "dist/**/*"
+    ]
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.25.12": true
+  }
+}

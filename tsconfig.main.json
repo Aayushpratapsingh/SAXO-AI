@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "target": "ES2022", "module": "CommonJS", "moduleResolution": "Node", "strict": true, "skipLibCheck": true, "esModuleInterop": true, "rootDir": "apps/desktop/src", "outDir": "dist", "types": ["node"], "noEmit": false },
+  "include": ["apps/desktop/src/main/**/*.ts", "apps/desktop/src/preload/**/*.ts"]
+}
