@@ -11,7 +11,7 @@ const node_child_process_1 = require("node:child_process");
 const node_util_1 = require("node:util");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
 const youtubeOrigin = /^https:\/\/(?:www\.)?youtube\.com\//i;
-let guestWindowId = null;
+let chromeWindowId = null;
 async function runJxa(source, timeout = 25_000) {
     if (process.platform !== 'darwin')
         throw new Error('SAXO’s Chrome connection currently requires macOS.');
@@ -35,42 +35,42 @@ async function runJxa(source, timeout = 25_000) {
     }
 }
 async function runChromeScript(script, timeout = 25_000) {
-    const source = `var app = Application("/Applications/Google Chrome.app"); if (!app.running()) throw new Error("Open a SAXO Guest Chrome window first."); var windows = app.windows(); var window = windows.filter(item => String(item.id()) === ${JSON.stringify(String(guestWindowId ?? -1))})[0]; if (!window) throw new Error("The SAXO Guest Chrome window is no longer available. Ask SAXO to open a page to start a new Guest session."); var tab = window.activeTab(); var result = tab.execute({javascript: ${JSON.stringify(script)}}); result === undefined || result === null ? "" : String(result);`;
+    const source = `var app = Application("/Applications/Google Chrome.app"); if (!app.running()) throw new Error("Open a Chrome window first."); var windows = app.windows(); var window = windows.filter(item => String(item.id()) === ${JSON.stringify(String(chromeWindowId ?? -1))})[0]; if (!window) throw new Error("The SAXO Chrome window is no longer available. Ask SAXO to open a page to connect again."); var tab = window.activeTab(); var result = tab.execute({javascript: ${JSON.stringify(script)}}); result === undefined || result === null ? "" : String(result);`;
     return runJxa(source, timeout);
 }
-async function ensureGuestWindow() {
+async function ensureChromeWindow() {
     const check = (id) => runJxa(`var app = Application("/Applications/Google Chrome.app"); app.running() && app.windows().some(item => String(item.id()) === ${JSON.stringify(String(id))}) ? "yes" : "no"`, 5000);
-    if (guestWindowId !== null && await check(guestWindowId) === 'yes')
-        return guestWindowId;
-    guestWindowId = null;
+    if (chromeWindowId !== null && await check(chromeWindowId) === 'yes')
+        return chromeWindowId;
+    chromeWindowId = null;
     const before = await runJxa(`var app = Application("/Applications/Google Chrome.app"); if (!app.running()) ""; else app.windows().map(item => String(item.id())).join(",");`, 5000).catch(() => '');
     const previousIds = new Set(before.split(',').filter(Boolean));
     try {
-        await execFileAsync('/usr/bin/open', ['-a', '/Applications/Google Chrome.app', '--args', '--guest'], { timeout: 10_000 });
+        await execFileAsync('/usr/bin/open', ['-a', '/Applications/Google Chrome.app', '--args', '--new-window'], { timeout: 10_000 });
     }
     catch (error) {
-        throw new Error(`Could not start Chrome Guest mode: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(`Could not open a regular Chrome window: ${error instanceof Error ? error.message : String(error)}`);
     }
     for (let attempt = 0; attempt < 30; attempt++) {
         const created = await runJxa(`var app = Application("/Applications/Google Chrome.app"); if (!app.running()) ""; else app.windows().map(item => String(item.id())).join(",");`, 5000).catch(() => '');
         const newId = created.split(',').find(id => id && !previousIds.has(id));
         if (newId) {
-            guestWindowId = Number(newId);
-            return guestWindowId;
+            chromeWindowId = Number(newId);
+            return chromeWindowId;
         }
         await new Promise(resolve => setTimeout(resolve, 250));
     }
-    throw new Error('Chrome did not create a separately identifiable Guest window. SAXO will not use your regular Chrome profile. Close any existing Guest window and retry.');
+    throw new Error('Chrome did not create a new regular-profile window. Open Chrome normally, then retry the approved action.');
 }
 async function chromeState() {
-    if (guestWindowId === null)
+    if (chromeWindowId === null)
         return '';
-    const source = `var app = Application("/Applications/Google Chrome.app"); if (!app.running()) ""; else { var windows = app.windows(); var window = windows.filter(item => String(item.id()) === ${JSON.stringify(String(guestWindowId))})[0]; window ? window.activeTab().url() + "\\n" + window.activeTab().title() : ""; }`;
+    const source = `var app = Application("/Applications/Google Chrome.app"); if (!app.running()) ""; else { var windows = app.windows(); var window = windows.filter(item => String(item.id()) === ${JSON.stringify(String(chromeWindowId))})[0]; window ? window.activeTab().url() + "\\n" + window.activeTab().title() : ""; }`;
     return runJxa(source, 5000);
 }
 async function navigateChrome(url) {
-    const targetWindowId = await ensureGuestWindow();
-    const source = `var app = Application("/Applications/Google Chrome.app"); var windows = app.windows(); var window = windows.filter(item => String(item.id()) === ${JSON.stringify(String(targetWindowId))})[0]; if (!window) throw new Error("SAXO Guest Chrome window is unavailable (wanted ${targetWindowId}; found " + windows.map(item => String(item.id())).join(",") + ")"); var tab = window.activeTab(); tab.url = ${JSON.stringify(url)}; for (var i = 0; i < 80 && tab.loading(); i++) delay(0.25); tab.url() + "\\n" + tab.title();`;
+    const targetWindowId = await ensureChromeWindow();
+    const source = `var app = Application("/Applications/Google Chrome.app"); var windows = app.windows(); var window = windows.filter(item => String(item.id()) === ${JSON.stringify(String(targetWindowId))})[0]; if (!window) throw new Error("SAXO Chrome window is unavailable (wanted ${targetWindowId}; found " + windows.map(item => String(item.id())).join(",") + ")"); var tab = window.activeTab(); tab.url = ${JSON.stringify(url)}; for (var i = 0; i < 80 && tab.loading(); i++) delay(0.25); tab.url() + "\\n" + tab.title();`;
     const output = await runJxa(source, 30_000);
     const [actualUrl, ...titleParts] = output.split('\n');
     if (!actualUrl || !/^https?:\/\//i.test(actualUrl))
@@ -124,9 +124,9 @@ async function searchWebApproved(query, site) {
     return navigateChrome(destination);
 }
 async function searchYouTubeApproved(query) {
-    const currentUrl = await runJxa(`var app = Application("/Applications/Google Chrome.app"); if (!app.running()) throw new Error("Open YouTube in SAXO Guest Chrome first."); var windows = app.windows(); var window = windows.filter(item => String(item.id()) === ${JSON.stringify(String(guestWindowId ?? -1))})[0]; if (!window) throw new Error("Open YouTube in SAXO Guest Chrome first."); window.activeTab().url();`);
+    const currentUrl = await runJxa(`var app = Application("/Applications/Google Chrome.app"); if (!app.running()) throw new Error("Open YouTube in SAXO Chrome first."); var windows = app.windows(); var window = windows.filter(item => String(item.id()) === ${JSON.stringify(String(chromeWindowId ?? -1))})[0]; if (!window) throw new Error("Open YouTube in SAXO Chrome first."); window.activeTab().url();`);
     if (!youtubeOrigin.test(currentUrl))
-        throw new Error('Open YouTube in the SAXO Guest Chrome tab before searching there.');
+        throw new Error('Open YouTube in the SAXO Chrome tab before searching there.');
     await navigateChrome(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`);
     const video = await readFirstVideo();
     const page = await browserState();
@@ -135,7 +135,7 @@ async function searchYouTubeApproved(query) {
 async function firstYouTubeVideo() {
     const page = await browserState();
     if (!page.url || !youtubeOrigin.test(page.url))
-        throw new Error('Open YouTube in the SAXO Guest Chrome tab before selecting a video.');
+        throw new Error('Open YouTube in the SAXO Chrome tab before selecting a video.');
     return readFirstVideo();
 }
 async function openYouTubeVideoApproved(url) {
